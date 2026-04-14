@@ -14,7 +14,8 @@ from pathlib import Path
 
 from engine.budget import BudgetExceeded
 from engine.loader import AgentSpec
-from engine.runner import Engine, RunContext
+from engine.runner import RunContext
+from engine.sdk_runner import SDKEngine as Engine
 from scanner.semgrep_runner import Candidate, run_semgrep
 from tools import runtime, sandbox
 

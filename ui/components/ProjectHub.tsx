@@ -44,15 +44,7 @@ export function ProjectHub({
           </h1>
           <div className="text-subt text-sm mt-1">
             Default lens{" "}
-            <span className="text-ink">{project.default_risk_lens}</span> ·
-            daily budget{" "}
-            <span className="text-ink font-mono">
-              {(project.daily_token_budget / 1_000_000).toFixed(1)}M
-            </span>{" "}
-            tokens · per-session cap{" "}
-            <span className="text-ink font-mono">
-              {project.per_session_pct_cap}%
-            </span>
+            <span className="text-ink">{project.default_risk_lens}</span>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -173,18 +165,12 @@ function SettingsTab({
   onSaved: (p: Project) => void;
 }) {
   const [lens, setLens] = useState(project.default_risk_lens);
-  const [budgetM, setBudgetM] = useState(
-    (project.daily_token_budget / 1_000_000).toString()
-  );
-  const [pctCap, setPctCap] = useState(project.per_session_pct_cap.toString());
   const [createIssues, setCreateIssues] = useState(!!project.create_issues);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const dirty =
     lens !== project.default_risk_lens ||
-    Math.round(Number(budgetM) * 1_000_000) !== project.daily_token_budget ||
-    Number(pctCap) !== project.per_session_pct_cap ||
     createIssues !== !!project.create_issues;
 
   const save = async () => {
@@ -193,8 +179,6 @@ function SettingsTab({
     try {
       const patch: ProjectPatch = {
         default_risk_lens: lens,
-        daily_token_budget: Math.max(0, Math.round(Number(budgetM) * 1_000_000)),
-        per_session_pct_cap: Math.max(0, Math.min(100, Number(pctCap))),
         create_issues: createIssues ? 1 : 0,
       };
       await api.updateProject(project.id, patch);
@@ -224,26 +208,10 @@ function SettingsTab({
             ))}
           </select>
         </label>
-        <label className="space-y-1">
-          <div className="text-subt">Daily token budget (M tokens)</div>
-          <input
-            type="number"
-            step="0.1"
-            value={budgetM}
-            onChange={(e) => setBudgetM(e.target.value)}
-            className="w-full bg-panel border border-border px-2 py-1.5 font-mono"
-          />
-        </label>
-        <label className="space-y-1">
-          <div className="text-subt">Per-session cap (% of daily budget)</div>
-          <input
-            type="number"
-            step="1"
-            value={pctCap}
-            onChange={(e) => setPctCap(e.target.value)}
-            className="w-full bg-panel border border-border px-2 py-1.5 font-mono"
-          />
-        </label>
+        <div className="text-[11px] text-subt italic">
+          Daily token budget and per-session caps are configured globally in{" "}
+          <span className="font-mono">config.yaml</span>.
+        </div>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"

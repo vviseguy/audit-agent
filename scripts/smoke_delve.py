@@ -1,8 +1,9 @@
 """Offline smoke test for the Delver pass.
 
-Stubs the Anthropic client so the agent 'responds' with the expected
-tool sequence: retrieve_similar_vulnerabilities -> create_draft_issue -> stop.
-Confirms draft_issue and journal rows are written.
+Uses ScriptedEngine: the scripted response invokes
+`retrieve_similar_vulnerabilities` then `create_draft_issue` through
+the real tool registry, so draft_issue + journal + vulnerability
+status transitions land in a temp SQLite DB.
 
 Run with:
     python scripts/smoke_delve.py
@@ -11,10 +12,10 @@ Run with:
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-stub")
@@ -26,112 +27,46 @@ sys.path.insert(0, str(ROOT))
 from db import store as dbstore  # noqa: E402
 from engine.budget import BudgetGuard  # noqa: E402
 from engine.loader import load_agent  # noqa: E402
-from engine.runner import Engine, RunContext  # noqa: E402
+from engine.runner import RunContext  # noqa: E402
 from orchestrator import delve_pass  # noqa: E402
+from scripts._mock_engine import ScriptedEngine  # noqa: E402
 from tools import all as _register_tools  # noqa: E402, F401
 from tools import runtime  # noqa: E402
 
 
-@dataclass
-class _Usage:
-    input_tokens: int = 200
-    output_tokens: int = 80
-
-
-@dataclass
-class _Block:
-    type: str
-    id: str = ""
-    name: str = ""
-    input: dict | None = None
-    text: str = ""
-
-
-@dataclass
-class _Response:
-    content: list
-    usage: _Usage
-    stop_reason: str = "tool_use"
-
-
-class _StubMessages:
-    def __init__(self, parent):
-        self.parent = parent
-
-    def create(self, **kwargs):
-        return self.parent._next(kwargs)
-
-
-class _StubClient:
-    """Three-turn stub: (1) retrieve_similar_vulnerabilities, (2) create_draft_issue, (3) end_turn."""
-
-    def __init__(self) -> None:
-        self.messages = _StubMessages(self)
-        self._turn = 0
-        # vulnerability_id is passed via the user_msg; extract lazily.
-        self._vuln_id: int | None = None
-
-    def _next(self, kwargs: dict) -> _Response:
-        self._turn += 1
-        if self._vuln_id is None:
-            import re
-
-            user_msg = kwargs["messages"][0]["content"]
-            m = re.search(r'"vulnerability_id":\s*(\d+)', user_msg)
-            self._vuln_id = int(m.group(1)) if m else 1
-
-        if self._turn == 1:
-            return _Response(
-                content=[
-                    _Block(
-                        type="tool_use",
-                        id="tu_sim",
-                        name="retrieve_similar_vulnerabilities",
-                        input={"query": "SQL injection in user search", "k": 3},
-                    )
-                ],
-                usage=_Usage(),
-                stop_reason="tool_use",
-            )
-        if self._turn == 2:
-            return _Response(
-                content=[
-                    _Block(
-                        type="tool_use",
-                        id="tu_draft",
-                        name="create_draft_issue",
-                        input={
-                            "vulnerability_id": self._vuln_id,
-                            "title": "SQL injection in /u/<name> handler",
-                            "severity": "high",
-                            "exploit_scenario": (
-                                "An attacker submits `?q=' OR 1=1 --` to the "
-                                "handler at app.py:5. The f-string interpolates "
-                                "the value directly into the SELECT, returning "
-                                "every row in the users table."
-                            ),
-                            "remediation": (
-                                "Use a parameterized query: "
-                                "`db.execute('SELECT * FROM users WHERE name = ?', (q,))`. "
-                                "Do not build SQL with f-strings or concatenation."
-                            ),
-                            "code_excerpt": (
-                                "q = req.args.get('q')\n"
-                                "db.execute(f\"SELECT * FROM users WHERE name = '{q}'\")"
-                            ),
-                            "confidence": 0.85,
-                            "references": ["CWE-89"],
-                        },
-                    )
-                ],
-                usage=_Usage(input_tokens=300, output_tokens=150),
-                stop_reason="tool_use",
-            )
-        return _Response(
-            content=[_Block(type="text", text="done")],
-            usage=_Usage(input_tokens=40, output_tokens=5),
-            stop_reason="end_turn",
-        )
+def _delve_script(agent, user_msg: str) -> list[dict]:
+    m = re.search(r'"vulnerability_id":\s*(\d+)', user_msg)
+    vuln_id = int(m.group(1)) if m else 1
+    return [
+        {
+            "name": "retrieve_similar_vulnerabilities",
+            "input": {"query": "SQL injection in user search", "k": 3},
+        },
+        {
+            "name": "create_draft_issue",
+            "input": {
+                "vulnerability_id": vuln_id,
+                "title": "SQL injection in /u/<name> handler",
+                "severity": "high",
+                "exploit_scenario": (
+                    "An attacker submits `?q=' OR 1=1 --` to the handler at "
+                    "app.py:5. The f-string interpolates the value directly "
+                    "into the SELECT, returning every row in the users table."
+                ),
+                "remediation": (
+                    "Use a parameterized query: "
+                    "`db.execute('SELECT * FROM users WHERE name = ?', (q,))`. "
+                    "Do not build SQL with f-strings or concatenation."
+                ),
+                "code_excerpt": (
+                    "q = req.args.get('q')\n"
+                    "db.execute(f\"SELECT * FROM users WHERE name = '{q}'\")"
+                ),
+                "confidence": 0.85,
+                "references": ["CWE-89"],
+            },
+        },
+    ]
 
 
 def main() -> int:
@@ -184,7 +119,6 @@ def main() -> int:
     session_id = conn.execute("SELECT id FROM session WHERE project_id=?", (proj_id,)).fetchone()["id"]
     run_id = dbstore.create_run(conn, session_id)
 
-    # Seed one needs_delve vulnerability (Ranker output).
     conn.execute(
         """
         INSERT INTO vulnerability(
@@ -210,7 +144,7 @@ def main() -> int:
         agent_call_caps={},
     )
     agent = load_agent(ROOT / "agents" / "delver.yaml")
-    engine = Engine(prompts_base=ROOT / "prompts", client=_StubClient())
+    engine = ScriptedEngine(_delve_script)
     eng_ctx = RunContext(
         run_id=run_id,
         project_id=proj_id,

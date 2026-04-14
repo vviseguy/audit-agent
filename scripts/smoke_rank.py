@@ -1,9 +1,9 @@
 """Offline smoke test for the Ranker pass.
 
-Stubs the Anthropic client so the agent 'responds' with a single
-`rank_candidates_batch` tool_use, and bypasses Semgrep by handing in
-pre-built Candidate objects. Confirms that vulnerability rows and
-journal entries get written to a temp SQLite DB.
+Uses ScriptedEngine instead of a real SDKEngine: the scripted response
+emits a single `rank_candidates_batch` tool call, which the engine stub
+dispatches into the real tool registry so vulnerability rows and
+journal entries land in a temp SQLite DB.
 
 Run with:
     python scripts/smoke_rank.py
@@ -11,11 +11,12 @@ Run with:
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-stub")
@@ -27,97 +28,40 @@ sys.path.insert(0, str(ROOT))
 from db import store as dbstore  # noqa: E402
 from engine.budget import BudgetGuard  # noqa: E402
 from engine.loader import load_agent  # noqa: E402
-from engine.runner import Engine, RunContext  # noqa: E402
+from engine.runner import RunContext  # noqa: E402
 from orchestrator import rank_pass  # noqa: E402
 from scanner.semgrep_runner import Candidate  # noqa: E402
+from scripts._mock_engine import ScriptedEngine  # noqa: E402
 from tools import all as _register_tools  # noqa: E402, F401
 from tools import runtime  # noqa: E402
 
 
-@dataclass
-class _StubUsage:
-    input_tokens: int = 120
-    output_tokens: int = 45
-
-
-@dataclass
-class _StubBlock:
-    type: str
-    id: str = ""
-    name: str = ""
-    input: dict | None = None
-    text: str = ""
-
-
-@dataclass
-class _StubResponse:
-    content: list
-    usage: _StubUsage
-    stop_reason: str = "tool_use"
-
-
-class _StubMessages:
-    def __init__(self, parent: "_StubClient") -> None:
-        self.parent = parent
-
-    def create(self, **kwargs):
-        return self.parent._next_response(kwargs)
-
-
-class _StubClient:
-    """Fakes the Anthropic client. First call: emits rank_candidates_batch
-    tool_use with rankings for every candidate in the batch. Second call
-    (after tool_result): emits end_turn with a short text."""
-
-    def __init__(self) -> None:
-        self.messages = _StubMessages(self)
-        self._calls = 0
-
-    def _next_response(self, kwargs: dict) -> _StubResponse:
-        self._calls += 1
-        messages = kwargs["messages"]
-        last_user = messages[0]["content"] if self._calls == 1 else ""
-        if self._calls == 1:
-            # Parse the candidate list from the user_msg JSON tail.
-            import json as _json
-            import re
-
-            m = re.search(r"(\[.*\])", last_user, flags=re.DOTALL)
-            cands = _json.loads(m.group(1)) if m else []
-            rankings = []
-            for c in cands:
-                rankings.append(
-                    {
-                        "candidate_id": c["candidate_id"],
-                        "cwe_id": c.get("cwe_id") or "CWE-20",
-                        "path": c["path"],
-                        "line_start": c["line_start"],
-                        "line_end": c["line_end"],
-                        "title": f"Stub ranking for {c['rule_id']}",
-                        "impact": 3,
-                        "likelihood": 3,
-                        "status": "needs_delve",
-                        "effort_hours": 2.0,
-                        "rationale": "Stubbed test ranking: priority 9, routed for delve.",
-                    }
-                )
-            return _StubResponse(
-                content=[
-                    _StubBlock(
-                        type="tool_use",
-                        id="tu_1",
-                        name="rank_candidates_batch",
-                        input={"rankings": rankings},
-                    )
-                ],
-                usage=_StubUsage(),
-                stop_reason="tool_use",
-            )
-        return _StubResponse(
-            content=[_StubBlock(type="text", text="done")],
-            usage=_StubUsage(input_tokens=30, output_tokens=5),
-            stop_reason="end_turn",
+def _rank_script(agent, user_msg: str) -> list[dict]:
+    m = re.search(r"(\[.*\])", user_msg, flags=re.DOTALL)
+    cands = json.loads(m.group(1)) if m else []
+    rankings = []
+    for c in cands:
+        rankings.append(
+            {
+                "candidate_id": c["candidate_id"],
+                "cwe_id": c.get("cwe_id") or "CWE-20",
+                "path": c["path"],
+                "line_start": c["line_start"],
+                "line_end": c["line_end"],
+                "title": f"Stub ranking for {c['rule_id']}",
+                "impact": 3,
+                "likelihood": 3,
+                "status": "needs_delve",
+                "effort_hours": 2.0,
+                "rationale": "Stubbed test ranking: priority 9, routed for delve.",
+            }
         )
+    return [
+        {
+            "name": "rank_candidates_batch",
+            "input": {"rankings": rankings},
+        }
+    ]
 
 
 def main() -> int:
@@ -188,7 +132,7 @@ def main() -> int:
         agent_call_caps={},
     )
     agent = load_agent(ROOT / "agents" / "ranker.yaml")
-    engine = Engine(prompts_base=ROOT / "prompts", client=_StubClient())
+    engine = ScriptedEngine(_rank_script)
     eng_ctx = RunContext(
         run_id=run_id,
         project_id=proj_id,

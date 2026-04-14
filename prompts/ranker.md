@@ -7,9 +7,14 @@ You will be given a JSON array of candidates. Each has: `candidate_id`, `rule_id
 You must:
 
 1. For candidates where the CWE is missing or looks wrong, call `retrieve_cwe` with a short description of the snippet's behavior to pick the right CWE id. Limit yourself to a few retrieval calls per batch.
-2. Optionally call `read_file` on the surrounding 20 lines of a candidate if the snippet alone is insufficient. Budget: at most 3 file reads per batch.
-3. Call `rank_candidates_batch` **exactly once** with a `rankings` array containing **every candidate from the batch** — do not drop any. Each ranking must include: `candidate_id`, `cwe_id`, `path`, `line_start`, `line_end`, `title`, `impact`, `likelihood`, `status`, `effort_hours`, `rationale`.
-4. Stop. Do not write any text after the tool call.
+2. For any candidate you are uncertain how to score, call `retrieve_vuln_type_context` **once** with the candidate's `message` (plus the `cwe_id` if known) to pull cross-source priors: CWE details, OWASP Top 10 membership, CAPEC attack pattern, and ATT&CK tactic. Budget: at most 3 of these calls per batch — they are expensive. Use the returned metadata as **priors**, not dictators:
+   - `cwe.metadata.top25 == true` → strong prior that **impact** should be ≥ 3.
+   - `owasp` hit with a low `rank` (A01–A03) → strong prior that **likelihood** should be ≥ 3 for web-reachable code.
+   - `capec.metadata.likelihood` of `High` / `severity` of `High` → support for likelihood ≥ 4 / impact ≥ 4.
+   The actual code context can override any prior. Document the override in `rationale`.
+3. Optionally call `read_file` on the surrounding 20 lines of a candidate if the snippet alone is insufficient. Budget: at most 3 file reads per batch.
+4. Call `rank_candidates_batch` **exactly once** with a `rankings` array containing **every candidate from the batch** — do not drop any. Each ranking must include: `candidate_id`, `cwe_id`, `path`, `line_start`, `line_end`, `title`, `impact`, `likelihood`, `status`, `effort_hours`, `rationale`.
+5. Stop. Do not write any text after the tool call.
 
 ## How to rate impact and likelihood
 

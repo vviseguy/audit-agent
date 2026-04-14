@@ -250,6 +250,20 @@ export const api = {
     ),
   runs: (limit = 50) => request<RunRow[]>(`/runs?limit=${limit}`),
   tokens: () => request<TokenRow[]>("/tokens"),
+  createToken: (body: {
+    label: string;
+    secret_ref: string;
+    scope: "read_only" | "read_and_issues" | "issues_only";
+  }) =>
+    request<{ id: number; deduped: boolean }>("/tokens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteToken: (id: number) =>
+    request<{ ok: boolean; deleted_id: number; deleted_label: string }>(
+      `/tokens/${id}`,
+      { method: "DELETE" }
+    ),
   config: () => request<AppConfig>("/config"),
   availability: () => request<AvailabilityDoc>("/availability"),
   saveAvailabilityCells: (cells: [number, number][]) =>

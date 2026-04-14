@@ -20,6 +20,7 @@ tools:
   - read_file
   - grep
   - retrieve_cwe
+  - retrieve_vuln_type_context
   - retrieve_similar_vulnerabilities
   - retrieve_draft_issues
   - create_draft_issue

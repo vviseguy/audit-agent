@@ -22,7 +22,8 @@ import yaml
 from db import store as dbstore
 from engine.budget import BudgetGuard
 from engine.loader import load_agent
-from engine.runner import Engine, RunContext
+from engine.runner import RunContext
+from engine.sdk_runner import SDKEngine
 from tools import runtime
 from tools import all as _register_tools  # noqa: F401  (registers tools)
 
@@ -90,7 +91,7 @@ def run_rank(
     )
 
     agent = load_agent(agents_base / "ranker.yaml")
-    engine = Engine(prompts_base=prompts_base)
+    engine = SDKEngine(prompts_base=prompts_base)
     eng_ctx = RunContext(
         run_id=run_id,
         project_id=project_row["id"],
@@ -172,7 +173,7 @@ def run_delve(
     )
 
     agent = load_agent(agents_base / "delver.yaml")
-    engine = Engine(prompts_base=prompts_base)
+    engine = SDKEngine(prompts_base=prompts_base)
     eng_ctx = RunContext(
         run_id=run_id,
         project_id=project_row["id"],
@@ -268,7 +269,7 @@ def run_understand(
     )
 
     agent = load_agent(agents_base / "understander.yaml")
-    engine = Engine(prompts_base=prompts_base)
+    engine = SDKEngine(prompts_base=prompts_base)
     eng_ctx = RunContext(
         run_id=run_id,
         project_id=project_row["id"],

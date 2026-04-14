@@ -2,6 +2,10 @@
 # and the code-reading tools are sandboxed from the host. Host processes
 # (FastAPI, Next.js, APScheduler) are NOT in this image.
 #
+# The LLM is driven via the Claude Code CLI (installed globally via npm)
+# through the claude-agent-sdk Python package. Our custom tools are
+# exposed to the model as an in-process MCP server (engine/tool_bridge.py).
+#
 # Build:
 #   docker build -f Dockerfile.agents -t agents:latest .
 # Run (dispatched by the host scheduler):
@@ -13,27 +17,41 @@
 #     -e ANTHROPIC_API_KEY \
 #     -e DB_PATH=/db/audit.db \
 #     -e CHROMA_PATH=/chroma \
-#     agents:latest python -m orchestrator.run_job <run_id>
+#     agents:latest orchestrator.run_job <run_id>
 
 FROM python:3.11-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    NODE_MAJOR=20
 
+# System deps: git for cloning targets, curl to install Node, build-essential
+# for any pip wheels that need compiling.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
+        curl \
         ca-certificates \
+        gnupg \
         build-essential \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install the Claude Code CLI globally so claude-agent-sdk can spawn it.
+RUN npm install -g @anthropic-ai/claude-code@latest
 
 WORKDIR /app
 
 # Install runtime deps first so code changes don't bust the layer.
 COPY pyproject.toml /app/pyproject.toml
 RUN pip install \
-        "anthropic>=0.94" \
+        "claude-agent-sdk>=0.1.59" \
         "pydantic>=2.8" \
         "pyyaml>=6" \
         "jsonschema>=4" \
@@ -66,6 +84,9 @@ USER audit
 ENV DB_PATH=/db/audit.db \
     CLONES_PATH=/clones \
     CHROMA_PATH=/chroma
+
+# Make sure the npm-installed claude binary is on PATH for the non-root user.
+ENV PATH="/usr/local/bin:/usr/bin:/bin"
 
 ENTRYPOINT ["python", "-m"]
 CMD ["orchestrator.run_job", "--help"]

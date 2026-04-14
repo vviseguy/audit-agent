@@ -186,6 +186,12 @@ class CreateRepoBody(BaseModel):
     branch: str = "main"
 
 
+class CreateTokenBody(BaseModel):
+    label: str = Field(min_length=1, max_length=120)
+    secret_ref: str = Field(min_length=1, max_length=120)
+    scope: str = Field(pattern="^(read_only|read_and_issues|issues_only)$")
+
+
 class CreateProjectBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     default_risk_lens: str = Field(
@@ -225,9 +231,16 @@ _PROJECT_PATCH_FIELDS = (
 def create_project(body: CreateProjectBody) -> dict[str, Any]:
     # Parse all repo URLs before touching the DB so a bad URL can't leave
     # an orphaned project row behind (sqlite connection is autocommit).
-    parsed_repos = [
-        (*_parse_github_url(r.url), r.url, r.branch) for r in body.repos
-    ]
+    # Dedupe by (owner, name) so pasting the same repo twice is a no-op.
+    seen: set[tuple[str, str]] = set()
+    parsed_repos: list[tuple[str, str, str, str]] = []
+    for r in body.repos:
+        owner, name = _parse_github_url(r.url)
+        key = (owner.lower(), name.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        parsed_repos.append((owner, name, r.url, r.branch))
     conn = _conn()
     existing = conn.execute(
         "SELECT id FROM project WHERE name=?", (body.name,)
@@ -260,7 +273,7 @@ def create_project(body: CreateProjectBody) -> dict[str, Any]:
             """,
             (project_id, url, owner, name, branch),
         )
-    return {"id": project_id, "name": body.name}
+    return {"id": project_id, "name": body.name, "repo_count": len(parsed_repos)}
 
 
 _GITHUB_URL_RE = re.compile(
@@ -708,6 +721,51 @@ def override_status(vuln_id: int, body: StatusOverrideBody) -> dict[str, Any]:
         payload={"to": body.status, "note": body.note},
     )
     return {"ok": True}
+
+
+@app.post("/tokens")
+def create_token(body: CreateTokenBody) -> dict[str, Any]:
+    conn = _conn()
+    # Dedupe: if a token with the same label+secret_ref exists, return it
+    # rather than creating a duplicate. This keeps the global pool clean
+    # when the same PAT is added from multiple project flows.
+    existing = conn.execute(
+        "SELECT id FROM github_token WHERE label=? AND secret_ref=?",
+        (body.label, body.secret_ref),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE github_token SET scope=? WHERE id=?",
+            (body.scope, existing["id"]),
+        )
+        return {"id": int(existing["id"]), "deduped": True}
+    cur = conn.execute(
+        "INSERT INTO github_token(label, secret_ref, scope) VALUES(?, ?, ?)",
+        (body.label, body.secret_ref, body.scope),
+    )
+    return {"id": int(cur.lastrowid), "deduped": False}
+
+
+@app.delete("/tokens/{token_id}")
+def delete_token(token_id: int) -> dict[str, Any]:
+    conn = _conn()
+    row = conn.execute(
+        "SELECT id, label FROM github_token WHERE id=?", (token_id,)
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "token not found")
+    # Unlink any project that was pointing at this token. SQL FKs don't
+    # cascade here because project.read_token_id is nullable.
+    conn.execute(
+        "UPDATE project SET read_token_id=NULL WHERE read_token_id=?",
+        (token_id,),
+    )
+    conn.execute(
+        "UPDATE project SET issues_token_id=NULL WHERE issues_token_id=?",
+        (token_id,),
+    )
+    conn.execute("DELETE FROM github_token WHERE id=?", (token_id,))
+    return {"ok": True, "deleted_id": token_id, "deleted_label": row["label"]}
 
 
 @app.post("/tokens/{token_id}/validate")

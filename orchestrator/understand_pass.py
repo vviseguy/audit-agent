@@ -14,7 +14,8 @@ from pathlib import Path
 from db import store as dbstore
 from engine.budget import BudgetExceeded
 from engine.loader import AgentSpec
-from engine.runner import Engine, RunContext
+from engine.runner import RunContext
+from engine.sdk_runner import SDKEngine as Engine
 from tools import runtime, sandbox
 
 log = logging.getLogger(__name__)

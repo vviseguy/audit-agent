@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -23,7 +24,15 @@ from db import store as dbstore
 from rag.chroma_client import get_chroma, CWE_COLLECTION
 
 CWE_XML_URL = "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
+CWE_TOP25_PATH = Path("./data/cwe_top25.json")
 NS = {"cwe": "http://cwe.mitre.org/cwe-7"}
+
+
+def load_top25(path: Path = CWE_TOP25_PATH) -> dict[str, int]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return {e["cwe_id"]: int(e["rank"]) for e in payload.get("entries", [])}
 
 
 def download_xml() -> bytes:
@@ -115,6 +124,8 @@ def seed(db_path: str, xml_bytes: bytes) -> tuple[int, int]:
     rows = list(parse_cwe_xml(xml_bytes))
     sql_n = dbstore.upsert_cwe(conn, rows)
 
+    top25 = load_top25()
+
     client = get_chroma()
     coll = client.get_or_create_collection(CWE_COLLECTION)
     if rows:
@@ -122,7 +133,13 @@ def seed(db_path: str, xml_bytes: bytes) -> tuple[int, int]:
             ids=[r["id"] for r in rows],
             documents=[_embed_text(r) for r in rows],
             metadatas=[
-                {"name": r["name"], "parent_id": r["parent_id"] or ""} for r in rows
+                {
+                    "name": r["name"],
+                    "parent_id": r["parent_id"] or "",
+                    "top25": r["id"] in top25,
+                    "top25_rank": top25.get(r["id"], 0),
+                }
+                for r in rows
             ],
         )
     return sql_n, len(rows)

@@ -4,13 +4,13 @@ version = "0.1.0"
 description = "Self-hosted cybersecurity audit agent with CWE-grounded RAG and PWA dashboard"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic>=0.40.0",
-    "pydantic>=2.6",
+    "claude-agent-sdk>=0.1.59",
+    "pydantic>=2.8",
     "pyyaml>=6.0",
     "jsonschema>=4.21",
     "chromadb>=0.4.22",
     "sentence-transformers>=2.5",
-    "fastapi>=0.110",
+    "fastapi>=0.120",
     "uvicorn[standard]>=0.27",
     "apscheduler>=3.10",
     "httpx>=0.27",

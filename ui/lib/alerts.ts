@@ -27,8 +27,8 @@ export function computeProjectAlerts(p: Project): ProjectAlert[] {
 
   if (!read) {
     alerts.push({
-      kind: "error",
-      text: "No read token linked. Clones and scans cannot run.",
+      kind: "warn",
+      text: "No read token linked — only public repos will clone.",
     });
   } else {
     const r = parseResult(read.validation_result);
