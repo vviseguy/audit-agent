@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RankingBatch",
+  "description": "Ranker output for a batch of Semgrep candidates.",
+  "type": "object",
+  "required": ["rankings"],
+  "properties": {
+    "rankings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "cwe_id",
+          "path",
+          "line_start",
+          "line_end",
+          "title",
+          "impact",
+          "likelihood",
+          "status",
+          "effort_hours",
+          "rationale"
+        ],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "cwe_id": { "type": "string", "pattern": "^CWE-[0-9]+$" },
+          "path": { "type": "string" },
+          "line_start": { "type": "integer", "minimum": 1 },
+          "line_end": { "type": "integer", "minimum": 1 },
+          "title": { "type": "string" },
+          "impact": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "likelihood": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "status": {
+            "type": "string",
+            "enum": ["new", "needs_delve", "low_priority", "false_positive"]
+          },
+          "effort_hours": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 16,
+            "description": "Agile-hours estimate for the Delver to scan the relevant attack surface for this finding."
+          },
+          "rationale": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

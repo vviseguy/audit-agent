@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg: #161b27;
+  --bg-elev: #1b2130;
+  --panel: #1f2637;
+  --panel-2: #262e42;
+  --border: #353e57;
+  --border-soft: #2c3347;
+  --ink: #ecf0f8;
+  --ink-soft: #c8ceda;
+  --subt: #9aa3b8;
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Little squares grid. */
+.sq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 14px);
+  gap: 2px;
+}
+
+.sq {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  display: inline-block;
+  cursor: pointer;
+  transition: transform 120ms ease, outline 120ms ease;
+}
+
+.sq:hover {
+  transform: scale(1.4);
+  outline: 1px solid var(--ink);
+  z-index: 10;
+}
+
+/* Border thickness encodes priority (impact × likelihood). */
+.sq-p1  { box-shadow: inset 0 0 0 0px var(--bg); }
+.sq-p4  { box-shadow: inset 0 0 0 0px var(--bg); }
+.sq-p8  { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25); }
+.sq-p12 { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.45); }
+.sq-p16 { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.65); }
+.sq-p20 { box-shadow: inset 0 0 0 2px #ffffff; }
+/* "Very bad" — critical priority gets an outer halo so outliers pop. */
+.sq-very-high { outline: 1px solid #ffffffaa; outline-offset: 1px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+}
+
+.panel-2 {
+  background: var(--panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.nav-link {
+  padding: 0.4rem 0.8rem;
+  border-radius: 5px;
+  color: var(--subt);
+  font-weight: 500;
+  transition: background 120ms ease, color 120ms ease;
+}
+.nav-link:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.nav-link-active {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+/* Softer scrollbar to match the palette. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}

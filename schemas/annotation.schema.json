@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Annotation",
+  "description": "Per-file or per-module note written by the Understander agent.",
+  "type": "object",
+  "required": ["path", "summary", "entry_point", "trust_boundary"],
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Repo-relative path that this annotation describes (file or directory)."
+    },
+    "summary": {
+      "type": "string",
+      "description": "1-3 sentence description of purpose."
+    },
+    "entry_point": {
+      "type": "boolean",
+      "description": "True if this path is an external entry point (HTTP route, CLI, worker)."
+    },
+    "trust_boundary": {
+      "type": "boolean",
+      "description": "True if untrusted data enters or crosses here."
+    },
+    "dataflows": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Notable dataflows, e.g. 'user input -> shell', 'request body -> db'."
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,26 @@
+name: ranker
+role: ranker
+model: claude-sonnet-4-6
+max_tokens: 4096
+temperature: 0
+
+rate_limit:
+  requests_per_minute: 20
+  max_calls_per_job: 40
+
+budget:
+  per_call_token_cap: 8000
+
+prompt_cache:
+  - system
+
+system_prompt_file: prompts/ranker.md
+
+tools:
+  - read_file
+  - retrieve_cwe
+  - rank_candidates_batch
+
+output_schema: schemas/ranking.schema.json
+
+batch_size: 15

@@ -1,0 +1,27 @@
+paths:
+  db: ./data/audit.db
+  chroma: ./data/chroma
+  clones: ./data/clones
+
+budgets:
+  daily_token_budget: 2_000_000
+  per_session_token_cap: 500_000
+  default_session_pct_cap: 30      # a session may consume at most 30% of daily
+
+rate_limits:
+  tokens_per_minute: 40_000
+  requests_per_minute: 60
+
+concurrency:
+  max_active_sessions: 2
+
+scheduler:
+  max_session_duration_minutes: 120
+  catch_up_missed_on_boot: true
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+ui:
+  port: 3000

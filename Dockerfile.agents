@@ -1,0 +1,71 @@
+# Agents-only image. Runs the orchestrator under Docker so the LLM calls
+# and the code-reading tools are sandboxed from the host. Host processes
+# (FastAPI, Next.js, APScheduler) are NOT in this image.
+#
+# Build:
+#   docker build -f Dockerfile.agents -t agents:latest .
+# Run (dispatched by the host scheduler):
+#   docker run --rm \
+#     --network=anthropic-only \
+#     -v audit-db:/db \
+#     -v audit-clones:/clones \
+#     -v audit-chroma:/chroma \
+#     -e ANTHROPIC_API_KEY \
+#     -e DB_PATH=/db/audit.db \
+#     -e CHROMA_PATH=/chroma \
+#     agents:latest python -m orchestrator.run_job <run_id>
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        ca-certificates \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install runtime deps first so code changes don't bust the layer.
+COPY pyproject.toml /app/pyproject.toml
+RUN pip install \
+        "anthropic>=0.94" \
+        "pydantic>=2.8" \
+        "pyyaml>=6" \
+        "jsonschema>=4" \
+        "chromadb>=1.5,<2" \
+        "httpx>=0.27" \
+        "python-dotenv>=1" \
+        "semgrep>=1.90"
+
+# Copy only the agent-side code. Server/UI stay on the host.
+COPY agents    /app/agents
+COPY db        /app/db
+COPY engine    /app/engine
+COPY gh        /app/gh
+COPY orchestrator /app/orchestrator
+COPY prompts   /app/prompts
+COPY rag       /app/rag
+COPY scanner   /app/scanner
+COPY schemas   /app/schemas
+COPY tools     /app/tools
+COPY config.yaml /app/config.yaml
+
+# Mount points — volumes are provided by the host at run time.
+VOLUME ["/db", "/clones", "/chroma"]
+
+# Non-root — the agents should never need privileged access.
+RUN groupadd --system audit && useradd --system --gid audit --home /app audit \
+    && chown -R audit:audit /app
+USER audit
+
+ENV DB_PATH=/db/audit.db \
+    CLONES_PATH=/clones \
+    CHROMA_PATH=/chroma
+
+ENTRYPOINT ["python", "-m"]
+CMD ["orchestrator.run_job", "--help"]

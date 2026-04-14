@@ -1,0 +1,27 @@
+name: delver
+role: delver
+model: claude-sonnet-4-6
+max_tokens: 4096
+temperature: 0.1
+
+rate_limit:
+  requests_per_minute: 15
+  max_calls_per_job: 60
+
+budget:
+  per_call_token_cap: 12000
+
+prompt_cache:
+  - system
+
+system_prompt_file: prompts/delver.md
+
+tools:
+  - read_file
+  - grep
+  - retrieve_cwe
+  - retrieve_similar_vulnerabilities
+  - retrieve_draft_issues
+  - create_draft_issue
+  - update_draft_issue
+  - record_journal

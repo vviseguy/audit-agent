@@ -1,0 +1,26 @@
+# Example project definition. Imported into the DB via:
+#   python scripts/import_project.py projects/example.yaml
+# After import, the UI is the source of truth; edits to this YAML are
+# only applied if you re-run the importer.
+
+name: juice-shop
+default_risk_lens: high_impact
+daily_token_budget: 2_000_000
+per_session_pct_cap: 30
+create_issues: true
+
+github_tokens:
+  - label: "juice-shop read-only"
+    secret_ref: GITHUB_PAT_READ
+    scope: read_only
+    use_for: read
+  - label: "juice-shop issues"
+    secret_ref: GITHUB_PAT_ISSUES
+    scope: issues_only
+    use_for: issues
+
+repos:
+  - url: https://github.com/juice-shop/juice-shop
+    owner: juice-shop
+    name: juice-shop
+    branch: master
